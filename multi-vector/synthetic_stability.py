@@ -1,6 +1,27 @@
-import numpy as np
-import matplotlib.pyplot as plt
+import argparse
+import sys
+from pathlib import Path
 from typing import List, Tuple, Dict
+
+import numpy as np
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from plotting import (  # noqa: E402
+    PALETTE,
+    FigureStyle,
+    add_reference_line,
+    apply_publication_style,
+    create_subplots,
+    finalize_figure,
+    format_log_axis,
+    load_results,
+    make_trend,
+    save_results,
+)
+
+RESULTS_PATH = ROOT / "results" / "multivector_stability.json"
+FIGURE_PATH = ROOT / "figures" / "multivector_stability"
 
 np.random.seed(42)
 
@@ -400,67 +421,55 @@ def print_theorem_conditions(theorem_results: List[Dict]):
 
 
 def plot_results(dimensions: List[int], results: Dict, output_path: str):
-    """Generate publication-quality plots of the results."""
-    chamfer_ratios = results['chamfer_stability']
-    avg_ratios = results['avgpool_stability']
-    chamfer_relvars = results['chamfer_relvar']
-    avg_relvars = results['avgpool_relvar']
-    
-    # Handle zero values for log scale
-    avg_relvars_plot = [max(v, 1e-6) for v in avg_relvars]
-    
-    plt.rcParams.update({
-        'font.size': 11,
-        'font.family': 'serif',
-        'axes.linewidth': 1.2,
-        'lines.linewidth': 2,
-        'lines.markersize': 7,
-        'figure.dpi': 150,
-    })
-    
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
-    
-    color_chamfer = '#2E86AB'
-    color_avg = '#D62828'
-    color_threshold = '#F77F00'
-    
-    # Plot 1: Stability Ratio
-    ax1.plot(dimensions, chamfer_ratios, marker='o', label='Chamfer Distance', 
-             color=color_chamfer, markerfacecolor='white', markeredgewidth=1.5)
-    ax1.plot(dimensions, avg_ratios, marker='s', label='Average Pooling', 
-             color=color_avg, markerfacecolor='white', markeredgewidth=1.5)
-    ax1.axhline(y=1.0, color=color_threshold, linestyle='--', alpha=0.8, 
-                linewidth=1.5, label='Instability Threshold')
-    
-    ax1.set_xlabel('Dimension', fontsize=12, fontweight='bold')
-    ax1.set_ylabel('Stability Ratio ($d_{max}/d_{min}$)', fontsize=12, fontweight='bold')
-    ax1.set_title('Query Stability', fontsize=13, fontweight='bold', pad=10)
-    ax1.legend(loc='best', framealpha=0.9)
-    ax1.set_xscale('log')
-    ax1.set_yscale('log')
-    ax1.grid(True, which='major', alpha=0.3)
-    ax1.grid(True, which='minor', alpha=0.1, linestyle=':')
-    ax1.minorticks_on()
-    
-    # Plot 2: Relative Variance
-    ax2.plot(dimensions, chamfer_relvars, marker='o', label='Chamfer Distance', 
-             color=color_chamfer, markerfacecolor='white', markeredgewidth=1.5)
-    ax2.plot(dimensions, avg_relvars_plot, marker='s', label='Average Pooling', 
-             color=color_avg, markerfacecolor='white', markeredgewidth=1.5)
-    
-    ax2.set_xlabel('Dimension', fontsize=12, fontweight='bold')
-    ax2.set_ylabel('Relative Variance', fontsize=12, fontweight='bold')
-    ax2.set_title('Relative Variance', fontsize=13, fontweight='bold', pad=10)
-    ax2.legend(loc='best', framealpha=0.9)
-    ax2.set_xscale('log')
-    ax2.set_yscale('log')
-    ax2.grid(True, which='major', alpha=0.3)
-    ax2.grid(True, which='minor', alpha=0.1, linestyle=':')
-    ax2.minorticks_on()
-    
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    print(f"\nPlot saved to: {output_path}")
+    """Two-panel figure: stability ratio and relative variance vs. dimension.
+
+    Blue = Chamfer distance (provably stable); red = average pooling (the
+    counter-example). Markers double as a print-safe encoding.
+    """
+    apply_publication_style(FigureStyle(font_size=18, axes_linewidth=2))
+    fig, (ax1, ax2) = create_subplots(1, 2, figsize=(13, 4.8))
+
+    labels = ["Chamfer distance", "Average pooling"]
+    colors = [PALETTE["blue_main"], PALETTE["red_strong"]]
+    markers = ["o", "s"]
+
+    make_trend(
+        ax1,
+        dimensions,
+        [results["chamfer_stability"], results["avgpool_stability"]],
+        labels,
+        colors=colors,
+        markers=markers,
+        xlabel="Dimension",
+        ylabel=r"Stability ratio ($d_{\max}/d_{\min}$)",
+        xscale="log",
+        yscale="log",
+    )
+    add_reference_line(ax1, 1.0, label="Instability threshold")
+    format_log_axis(ax1, "x")
+    format_log_axis(ax1, "y")
+    ax1.legend(loc="center right")  # empty band between the two curves
+
+    # Average pooling collapses to exactly zero variance: clamp for the log axis.
+    avg_relvars_plot = [max(v, 1e-6) for v in results["avgpool_relvar"]]
+    make_trend(
+        ax2,
+        dimensions,
+        [results["chamfer_relvar"], avg_relvars_plot],
+        labels,
+        colors=colors,
+        markers=markers,
+        xlabel="Dimension",
+        ylabel="Relative variance",
+        xscale="log",
+        yscale="log",
+    )
+    format_log_axis(ax2, "x")
+    format_log_axis(ax2, "y")
+    ax2.legend(loc="center right")
+
+    saved = finalize_figure(fig, output_path, formats=["png", "pdf"], dpi=300)
+    print("\nPlot saved to: " + ", ".join(str(s) for s in saved))
 
 
 def print_analysis(results: Dict):
@@ -495,19 +504,37 @@ def print_analysis(results: Dict):
     print("  - For Chamfer: min operator selects v or -v (whichever is closer), preserving signal")
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Synthetic multi-vector stability experiment (Theorem 5.9).")
+    parser.add_argument("--results", default=str(RESULTS_PATH), help="JSON file to write/read experiment results")
+    parser.add_argument("--figure", default=str(FIGURE_PATH), help="Output figure stem (PNG + PDF are written)")
+    parser.add_argument("--plot-only", action="store_true", help="Skip the experiment and re-plot saved results")
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
+    args = parse_args()
     dimensions = [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
-    
-    results, theorem_results = run_experiment(
-        dimensions=dimensions,
-        n_base_docs=200,
-        n_base_queries=200,
-        num_query_sets=100,
-        vectors_per_set=4,
-        n_clusters=5,
-        check_theorem=True
-    )
-    
-    print_analysis(results)
-    print_theorem_conditions(theorem_results)
-    plot_results(dimensions, results, 'multivector_stability.png')
+
+    if args.plot_only:
+        saved = load_results(args.results)
+        results, dimensions = saved["results"], saved["dimensions"]
+    else:
+        params = dict(
+            n_base_docs=200,
+            n_base_queries=200,
+            num_query_sets=100,
+            vectors_per_set=4,
+            n_clusters=5,
+            check_theorem=True,
+        )
+        results, theorem_results = run_experiment(dimensions=dimensions, **params)
+        save_results(
+            {"results": results, "theorem_results": theorem_results, "dimensions": dimensions, "params": params},
+            args.results,
+        )
+        print(f"\nResults saved to: {args.results}")
+        print_analysis(results)
+        print_theorem_conditions(theorem_results)
+
+    plot_results(dimensions, results, args.figure)

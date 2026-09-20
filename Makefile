@@ -1,4 +1,4 @@
-.PHONY: help install sync clean clean-plots algorithmic-stability filtered-stability \
+.PHONY: help install sync clean clean-plots plots algorithmic-stability filtered-stability \
         colbert-stability synthetic-stability theorem-validation sparse-synthetics \
         compute-splade validate-sparse-theorem all-experiments
 
@@ -27,8 +27,17 @@ clean: ## Clean cache files
 	find . -type f -name "*.pyo" -delete
 	find . -type f -name ".DS_Store" -delete
 
-clean-plots: ## Clean plot files
-	find . -type f -name "*.png" -delete
+clean-plots: ## Clean generated figures (results/*.json are kept)
+	find figures -type f \( -name "*.png" -o -name "*.pdf" \) -delete 2>/dev/null || true
+
+plots: ## Re-render every figure from the saved results/*.json without re-running experiments
+	@echo "$(BLUE)Re-rendering figures from results/...$(RESET)"
+	@for script in algorithmic_stability.py filtered/filtered_stability.py \
+	               multi-vector/synthetic_stability.py multi-vector/colbert_stability.py \
+	               sparse/synthetics.py; do \
+		echo "$(YELLOW)$$script --plot-only$(RESET)"; \
+		uv run python $$script --plot-only || echo "  (skipped: no saved results yet)"; \
+	done
 
 # Real work begins here
 # Target for running algorithmic stability experiments comparing

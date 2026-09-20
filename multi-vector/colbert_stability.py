@@ -1,12 +1,30 @@
-import torch
+import argparse
+import sys
+from pathlib import Path
+from typing import List, Tuple
+
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from matplotlib.ticker import AutoMinorLocator, LogLocator
-from transformers import AutoTokenizer, AutoModel
+import torch
 from datasets import load_dataset
 from tqdm import tqdm
-from typing import List, Tuple
+from transformers import AutoModel, AutoTokenizer
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from plotting import (  # noqa: E402
+    PALETTE,
+    FigureStyle,
+    apply_publication_style,
+    create_subplots,
+    finalize_figure,
+    format_log_axis,
+    load_results,
+    make_boxplot,
+    save_results,
+)
+
+RESULTS_PATH = ROOT / "results" / "colbert_stability.json"
+FIGURE_PATH = ROOT / "figures" / "colbert_stability"
 
 
 class RealDataStabilityAnalyzer:
@@ -123,118 +141,72 @@ class RealDataStabilityAnalyzer:
         )
 
 
-def plot_results(results: Tuple[np.ndarray, ...]):
-    """Generates and saves the two-panel boxplot figure."""
-    chamfer_ratios, avg_pool_ratios, chamfer_relvars, avg_pool_relvars = results
+def plot_results(results: dict, output_path: str):
+    """Two-panel box plots: per-query stability ratio and relative variance.
 
+    Blue = Chamfer distance (provably stable), red = average pooling. Boxes
+    span the interquartile range, whiskers the 5th-95th percentiles.
+    """
     print("Analysis complete. Generating plots...")
+    apply_publication_style(FigureStyle(font_size=18, axes_linewidth=2))
+    fig, (ax1, ax2) = create_subplots(1, 2, figsize=(12, 4.8))
 
-    plt.style.use("default")
-    plt.rcParams.update(
-        {
-            "font.size": 11,
-            "font.family": "serif",
-            "font.serif": ["Times New Roman", "DejaVu Serif", "serif"],
-            "axes.linewidth": 1.2,
-            "axes.spines.top": True,
-            "axes.spines.right": True,
-            "axes.spines.left": True,
-            "axes.spines.bottom": True,
-            "axes.grid": False,
-            "grid.alpha": 0.4,
-            "grid.linewidth": 0.8,
-            "grid.color": "gray",
-            "axes.axisbelow": True,
-            "legend.frameon": False,
-            "legend.fontsize": 10,
-            "xtick.major.size": 5,
-            "ytick.major.size": 5,
-            "lines.linewidth": 2,
-            "lines.markersize": 6,
-            "figure.dpi": 600,
-            "savefig.dpi": 600,
-            "savefig.bbox": "tight",
-            "savefig.pad_inches": 0.1,
-        }
+    labels = ["Chamfer distance", "Average pooling"]
+    colors = [PALETTE["blue_main"], PALETTE["red_strong"]]
+
+    make_boxplot(
+        ax1,
+        [results["chamfer_ratios"], results["avg_pool_ratios"]],
+        labels,
+        colors=colors,
+        ylabel=r"Stability ratio ($d_{\max}/d_{\min}$)",
     )
+    ax1.set_ylim(bottom=0.9)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-    palette = ["#2E86AB", "#F18F01"]
-
-    # Plot 1: Stability Ratio Distribution (narrower boxes)
-    sns.boxplot(
-        data=[chamfer_ratios, avg_pool_ratios],
-        palette=palette,
-        ax=ax1,
-        whis=(5, 95),
-        showfliers=False,
-        width=0.35,  # thinner boxes
+    make_boxplot(
+        ax2,
+        [results["chamfer_relvars"], results["avg_pool_relvars"]],
+        labels,
+        colors=colors,
+        ylabel="Relative variance",
+        yscale="log",
     )
-    # ax1.axhline(y=1.0, color="red", linestyle="--", alpha=0.7, linewidth=1.5)
-    ax1.set_xticks([0, 1], ["Chamfer Distance", "Average Pooling"], weight="bold")
-    ax1.set_ylabel(
-        "Stability Ratio ($d_{\\mathrm{max}}/d_{\\mathrm{min}}$)",
-        fontsize=12,
-        fontweight="bold",
-    )
-    ax1.set_title(
-        "Distribution of Query Stability", fontsize=13, fontweight="bold", pad=15
-    )
+    format_log_axis(ax2, "y")
 
-    # Plot 2: Relative Variance Distribution (log scale, narrower boxes)
-    sns.boxplot(
-        data=[chamfer_relvars, avg_pool_relvars],
-        palette=palette,
-        ax=ax2,
-        whis=(5, 95),
-        showfliers=False,
-        width=0.35,  # thinner boxes
-    )
-    ax2.set_xticks([0, 1], ["Chamfer Distance", "Average Pooling"], weight="bold")
-    ax2.set_ylabel("Relative Variance (Log Scale)", fontsize=12, fontweight="bold")
-    ax2.set_title(
-        "Distribution of Relative Variance", fontsize=13, fontweight="bold", pad=15
-    )
-    ax2.set_yscale("log")
+    saved = finalize_figure(fig, output_path, formats=["png", "pdf"], dpi=300)
+    print("Plot saved to: " + ", ".join(str(p) for p in saved))
 
-    yticks = ax2.get_yticks()
-    if len(yticks) > 0:
-        y0 = yticks[0]  # smallest visible tick (e.g., 1e-3)
-        ax2.axhline(
-            y=y0,
-            color="white",
-            linestyle="--",
-            linewidth=1.5,
-            alpha=0.7,
-        )
 
-    ax1.yaxis.set_minor_locator(AutoMinorLocator(4))
-
-    ax2.yaxis.set_major_locator(LogLocator(base=10.0))
-    ax2.yaxis.set_minor_locator(LogLocator(base=10.0, subs=np.arange(2, 10) * 0.1))
-
-    for ax in (ax1, ax2):
-        ax.minorticks_on()
-        ax.grid(True, which="major", axis="both", alpha=0.4, linewidth=0.8)
-        ax.grid(
-            True,
-            which="minor",
-            axis="both",
-            alpha=0.2,
-            linewidth=0.5,
-            linestyle=":",
-        )
-
-    plt.tight_layout()
-    filename = "colbert_stability_analysis.png"
-    plt.savefig(filename, format="png")
-    print(f"Plot saved to {filename}")
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="ColBERT stability on MS MARCO: Chamfer vs. average pooling.")
+    parser.add_argument("--num-queries", type=int, default=100)
+    parser.add_argument("--num-docs", type=int, default=1000)
+    parser.add_argument("--model", default="colbert-ir/colbertv2.0")
+    parser.add_argument("--results", default=str(RESULTS_PATH), help="JSON file to write/read experiment results")
+    parser.add_argument("--figure", default=str(FIGURE_PATH), help="Output figure stem (PNG + PDF are written)")
+    parser.add_argument("--plot-only", action="store_true", help="Skip the experiment and re-plot saved results")
+    return parser.parse_args()
 
 
 def main():
-    analyzer = RealDataStabilityAnalyzer()
-    results = analyzer.run_analysis(num_queries=100, num_docs=1000)
-    plot_results(results)
+    args = parse_args()
+    if args.plot_only:
+        results = load_results(args.results)
+    else:
+        analyzer = RealDataStabilityAnalyzer(model_name=args.model)
+        chamfer_ratios, avg_pool_ratios, chamfer_relvars, avg_pool_relvars = analyzer.run_analysis(
+            num_queries=args.num_queries, num_docs=args.num_docs
+        )
+        results = {
+            "chamfer_ratios": chamfer_ratios,
+            "avg_pool_ratios": avg_pool_ratios,
+            "chamfer_relvars": chamfer_relvars,
+            "avg_pool_relvars": avg_pool_relvars,
+            "params": {"num_queries": args.num_queries, "num_docs": args.num_docs, "model": args.model},
+        }
+        save_results(results, args.results)
+        print(f"Results saved to: {args.results}")
+    plot_results(results, args.figure)
 
 
 if __name__ == "__main__":

@@ -1,9 +1,65 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.ticker import AutoMinorLocator, LogLocator
+import argparse
+import sys
+from pathlib import Path
 from typing import Tuple, List, Dict
+
+import numpy as np
 from tqdm import tqdm
-import os
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from plotting import (  # noqa: E402
+    PALETTE,
+    FigureStyle,
+    add_reference_line,
+    apply_publication_style,
+    create_subplots,
+    finalize_figure,
+    format_log_axis,
+    load_results,
+    make_trend,
+    save_results,
+)
+
+RESULTS_PATH = ROOT / "results" / "sparse_stability.json"
+FIGURE_DIR = ROOT / "figures"
+
+# The four regimes of the synthetic generator. Blue marks the regime the
+# theorem predicts to be stable; reds and gray mark the three contrasts.
+SCENARIOS = [
+    {
+        "name": "Both CoI and Overlap",
+        "label": "Both CoI and overlap",
+        "enforce_concentration": True,
+        "enforce_overlap": True,
+        "color": PALETTE["blue_main"],
+        "marker": "o",
+    },
+    {
+        "name": "CoI Only",
+        "label": "CoI only",
+        "enforce_concentration": True,
+        "enforce_overlap": False,
+        "color": PALETTE["red_strong"],
+        "marker": "s",
+    },
+    {
+        "name": "Overlap Only",
+        "label": "Overlap only",
+        "enforce_concentration": False,
+        "enforce_overlap": True,
+        "color": PALETTE["red_soft"],
+        "marker": "^",
+    },
+    {
+        "name": "Neither",
+        "label": "Neither",
+        "enforce_concentration": False,
+        "enforce_overlap": False,
+        "color": PALETTE["gray_mid"],
+        "marker": "D",
+    },
+]
 
 
 class RealisticSparseVectorGenerator:
@@ -351,42 +407,7 @@ class SparseSearchStabilityExperiment:
     ) -> Dict:
         """Run experiment across different π values."""
 
-        os.makedirs("overlap_sensitivity", exist_ok=True)
-
-        scenarios = [
-            {
-                "name": "Both CoI and Overlap",
-                "enforce_concentration": True,
-                "enforce_overlap": True,
-                "color": "#2E86AB",
-                "marker": "o",
-                "linestyle": "-",
-            },
-            {
-                "name": "CoI Only",
-                "enforce_concentration": True,
-                "enforce_overlap": False,
-                "color": "#F18F01",
-                "marker": "s",
-                "linestyle": "--",
-            },
-            {
-                "name": "Overlap Only",
-                "enforce_concentration": False,
-                "enforce_overlap": True,
-                "color": "#C73E1D",
-                "marker": "^",
-                "linestyle": "-.",
-            },
-            {
-                "name": "Neither",
-                "enforce_concentration": False,
-                "enforce_overlap": False,
-                "color": "#A23B72",
-                "marker": "d",
-                "linestyle": ":",
-            },
-        ]
+        scenarios = SCENARIOS
 
         all_results = {}
 
@@ -485,254 +506,134 @@ class SparseSearchStabilityExperiment:
                         f"CoI={np.mean(conc):.3f}, OoI={np.mean(overlap):.3f}"
                     )
 
-            self.plot_single_pi_result(results, scenarios)
             all_results[pi] = results
-
-        # Create summary plot across all pi values
-        self.plot_pi_comparison(all_results, scenarios)
 
         return all_results
 
-    def plot_single_pi_result(self, results: Dict, scenarios: List[Dict]):
-        """Plot results for a single π value."""
-        plt.style.use("default")
-        plt.rcParams.update(
-            {
-                "font.size": 11,
-                "font.family": "serif",
-                "font.serif": ["Times New Roman", "DejaVu Serif", "serif"],
-                "axes.linewidth": 1.2,
-                "axes.spines.top": True,
-                "axes.spines.right": True,
-                "axes.spines.left": True,
-                "axes.spines.bottom": True,
-                "axes.grid": False,
-                "grid.alpha": 0.4,
-                "grid.linewidth": 0.8,
-                "grid.color": "gray",
-                "axes.axisbelow": True,
-                "legend.frameon": False,
-                "legend.fontsize": 10,
-                "xtick.major.size": 5,
-                "ytick.major.size": 5,
-                "lines.linewidth": 2,
-                "lines.markersize": 6,
-                "figure.dpi": 600,
-                "savefig.dpi": 600,
-                "savefig.bbox": "tight",
-                "savefig.pad_inches": 0.1,
-            }
+
+def plot_single_pi_result(results: Dict, output_stem: Path):
+    """Two-panel figure for one overlap probability: stability ratio and relative variance."""
+    apply_publication_style(FigureStyle(font_size=18, axes_linewidth=2))
+    fig, (ax1, ax2) = create_subplots(1, 2, figsize=(13, 4.8))
+    dims = results["dimensions"]
+
+    labels = [sc["label"] for sc in SCENARIOS]
+    colors = [sc["color"] for sc in SCENARIOS]
+    markers = [sc["marker"] for sc in SCENARIOS]
+
+    make_trend(
+        ax1,
+        dims,
+        [results["scenarios"][sc["name"]]["ratios"] for sc in SCENARIOS],
+        labels,
+        colors=colors,
+        markers=markers,
+        xlabel="Dimension",
+        ylabel=r"Stability ratio ($d_{\max}/d_{\min}$)",
+        xscale="log",
+    )
+    add_reference_line(ax1, 1.0, label="Instability threshold")
+    format_log_axis(ax1, "x")
+    ax1.legend(loc="upper right")
+
+    make_trend(
+        ax2,
+        dims,
+        [results["scenarios"][sc["name"]]["relvars"] for sc in SCENARIOS],
+        labels,
+        colors=colors,
+        markers=markers,
+        xlabel="Dimension",
+        ylabel="Relative variance",
+        xscale="log",
+        yscale="log",
+    )
+    format_log_axis(ax2, "x")
+    format_log_axis(ax2, "y")
+    ax2.legend(loc="lower left")
+
+    saved = finalize_figure(fig, output_stem, formats=["png", "pdf"], dpi=300)
+    print("  Saved: " + ", ".join(str(p) for p in saved))
+
+
+def plot_pi_comparison(all_results: Dict, output_stem: Path):
+    """2x2 summary: relative variance vs. dimension per regime, one curve per pi."""
+    apply_publication_style(FigureStyle(font_size=18, axes_linewidth=2))
+    fig, axes = create_subplots(2, 2, figsize=(13, 9.5))
+    pi_values = sorted(all_results.keys(), key=float)
+    pi_colors = [PALETTE["blue_main"], PALETTE["blue_secondary"], PALETTE["teal"], PALETTE["violet"], PALETTE["gray_mid"]]
+
+    for ax, sc in zip(axes, SCENARIOS):
+        name = sc["name"]
+        dims = all_results[pi_values[0]]["dimensions"]
+        make_trend(
+            ax,
+            dims,
+            [all_results[pi]["scenarios"][name]["relvars"] for pi in pi_values],
+            [rf"$\pi = {float(pi):g}$" for pi in pi_values],
+            colors=pi_colors,
+            xlabel="Dimension",
+            ylabel="Relative variance",
+            xscale="log",
+            yscale="log",
         )
+        format_log_axis(ax, "x")
+        format_log_axis(ax, "y")
+        ax.set_title(sc["label"], pad=10)
+        ax.legend(loc="best")
 
-        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-        dims = results["dimensions"]
-        pi = results["pi"]
+    saved = finalize_figure(fig, output_stem, formats=["png", "pdf"], dpi=300)
+    print("  Saved: " + ", ".join(str(p) for p in saved))
 
-        # Stability Ratio
-        ax1 = axes[0]
-        for scenario in scenarios:
-            name = scenario["name"]
-            ax1.plot(
-                dims,
-                results["scenarios"][name]["ratios"],
-                marker=scenario["marker"],
-                linestyle=scenario["linestyle"],
-                linewidth=2,
-                markersize=6,
-                label=name,
-                color=scenario["color"],
-                markerfacecolor="white",
-            )
 
-        ax1.axhline(
-            y=1,
-            color="red",
-            linestyle="--",
-            linewidth=1.5,
-            label="Instability Threshold",
-            alpha=0.7,
-        )
-        ax1.set_xlabel("Dimension", fontsize=12, fontweight="bold")
-        ax1.set_ylabel(
-            "Stability Ratio ($d_{\\mathrm{max}}/d_{\\mathrm{min}}$)",
-            fontsize=12,
-            fontweight="bold",
-        )
-        ax1.set_title(
-            f"Query Stability (π={pi})", fontsize=13, fontweight="bold", pad=15
-        )
-        ax1.legend()
-        ax1.set_xscale("log")
-
-        # Relative Variance
-        ax2 = axes[1]
-        for scenario in scenarios:
-            name = scenario["name"]
-            ax2.plot(
-                dims,
-                results["scenarios"][name]["relvars"],
-                marker=scenario["marker"],
-                linestyle=scenario["linestyle"],
-                linewidth=2,
-                markersize=6,
-                label=name,
-                color=scenario["color"],
-                markerfacecolor="white",
-            )
-
-        ax2.set_xlabel("Dimension", fontsize=12, fontweight="bold")
-        ax2.set_ylabel("Relative Variance", fontsize=12, fontweight="bold")
-        ax2.set_title(
-            f"Relative Variance (π={pi})", fontsize=13, fontweight="bold", pad=15
-        )
-        ax2.legend()
-        ax2.set_xscale("log")
-        ax2.set_yscale("log")
-
-        ax1.xaxis.set_minor_locator(LogLocator(base=10.0, subs=np.arange(2, 10) * 0.1))
-        ax1.yaxis.set_minor_locator(AutoMinorLocator())
-
-        ax2.yaxis.set_major_locator(LogLocator(base=10.0))
-        ax2.yaxis.set_minor_locator(LogLocator(base=10.0, subs=np.arange(2, 10) * 0.1))
-        ax2.xaxis.set_minor_locator(LogLocator(base=10.0, subs=np.arange(2, 10) * 0.1))
-
-        for ax in (ax1, ax2):
-            ax.minorticks_on()
-            # Major grid: solid
-            ax.grid(True, which="major", axis="both", alpha=0.4, linewidth=0.8)
-            # Minor grid: dotted & lighter
-            ax.grid(
-                True,
-                which="minor",
-                axis="both",
-                alpha=0.2,
-                linewidth=0.5,
-                linestyle=":",
-            )
-
-        plt.tight_layout()
-        filename = f"overlap_sensitivity/stability_pi_{pi:.1f}.png"
-        plt.savefig(filename, format="png")
-        plt.close()
-        print(f"  ✓ Saved: {filename}")
-
-    def plot_pi_comparison(self, all_results: Dict, scenarios: List[Dict]):
-        """Create summary plot comparing all π values."""
-        plt.style.use("default")
-        plt.rcParams.update(
-            {
-                "font.size": 11,
-                "font.family": "serif",
-                "font.serif": ["Times New Roman", "DejaVu Serif", "serif"],
-                "axes.linewidth": 1.2,
-                "axes.spines.top": True,
-                "axes.spines.right": True,
-                "axes.spines.left": True,
-                "axes.spines.bottom": True,
-                "axes.grid": False,
-                "grid.alpha": 0.4,
-                "grid.linewidth": 0.8,
-                "grid.color": "gray",
-                "axes.axisbelow": True,
-                "legend.frameon": False,
-                "legend.fontsize": 10,
-                "xtick.major.size": 5,
-                "ytick.major.size": 5,
-                "lines.linewidth": 2,
-                "lines.markersize": 6,
-                "figure.dpi": 600,
-                "savefig.dpi": 600,
-                "savefig.bbox": "tight",
-                "savefig.pad_inches": 0.1,
-            }
-        )
-
-        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-
-        pi_values = sorted(all_results.keys())
-
-        for idx, scenario in enumerate(scenarios):
-            ax = axes[idx // 2, idx % 2]
-            name = scenario["name"]
-
-            for pi in pi_values:
-                results = all_results[pi]
-                dims = results["dimensions"]
-                relvars = results["scenarios"][name]["relvars"]
-
-                ax.plot(
-                    dims,
-                    relvars,
-                    marker="o",
-                    linestyle="-",
-                    linewidth=2,
-                    markersize=6,
-                    label=f"π={pi}",
-                    markerfacecolor="white",
-                )
-
-            ax.set_xlabel("Dimension", fontsize=12, fontweight="bold")
-            ax.set_ylabel("Relative Variance", fontsize=12, fontweight="bold")
-            ax.set_title(f"{name}: Effect of π", fontsize=13, fontweight="bold", pad=15)
-            ax.legend()
-            ax.set_xscale("log")
-            ax.set_yscale("log")
-
-            # Add minor ticks and grid
-            ax.yaxis.set_major_locator(LogLocator(base=10.0))
-            ax.yaxis.set_minor_locator(
-                LogLocator(base=10.0, subs=np.arange(2, 10) * 0.1)
-            )
-            ax.xaxis.set_minor_locator(
-                LogLocator(base=10.0, subs=np.arange(2, 10) * 0.1)
-            )
-            ax.minorticks_on()
-            ax.grid(True, which="major", axis="both", alpha=0.4, linewidth=0.8)
-            ax.grid(
-                True,
-                which="minor",
-                axis="both",
-                alpha=0.2,
-                linewidth=0.5,
-                linestyle=":",
-            )
-
-        plt.tight_layout()
-        plt.savefig(
-            "overlap_sensitivity/pi_comparison_summary.png",
-            format="png",
-        )
-        plt.close()
-        print(f"\nSaved: overlap_sensitivity/pi_comparison_summary.png")
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Synthetic sparse-embedding stability experiment (Theorem 7.4).")
+    parser.add_argument("--results", default=str(RESULTS_PATH), help="JSON file to write/read experiment results")
+    parser.add_argument("--figure-dir", default=str(FIGURE_DIR), help="Directory for the output figures")
+    parser.add_argument("--plot-only", action="store_true", help="Skip the experiment and re-plot saved results")
+    parser.add_argument(
+        "--dimensions",
+        type=int,
+        nargs="+",
+        default=[128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 131072],
+        help="Dimensions to sweep. Peak memory is ~3 x n_docs x dim x 8 bytes per scenario "
+        "(~31 GB at 131072), so trim this list on small machines.",
+    )
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
+    args = parse_args()
     np.random.seed(42)
 
-    dimensions = [128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 131072]
+    dimensions = args.dimensions
     overlap_probs = [0.5]
 
-    print("=" * 70)
-    print("OVERLAP SENSITIVITY ANALYSIS")
-    print("=" * 70)
-    print(f"Dimensions: {dimensions}")
-    print(f"Overlap probabilities (π): {overlap_probs}")
-    print(f"Scenarios: Both CoI and Overlap, CoI Only, Overlap Only, Neither")
-    print("=" * 70)
+    if args.plot_only:
+        all_results = load_results(args.results)["all_results"]
+    else:
+        print("=" * 70)
+        print("OVERLAP SENSITIVITY ANALYSIS")
+        print("=" * 70)
+        print(f"Dimensions: {dimensions}")
+        print(f"Overlap probabilities (π): {overlap_probs}")
+        print(f"Scenarios: Both CoI and Overlap, CoI Only, Overlap Only, Neither")
+        print("=" * 70)
 
-    experiment = SparseSearchStabilityExperiment(p=2, use_sampling=True)
-    all_results = experiment.run_overlap_sensitivity_experiment(
-        dimensions=dimensions,
-        overlap_probs=overlap_probs,
-        n_queries=100,
-        n_docs=10000,
-        avg_sparsity=30,
-        alpha_p=0.83,
-        gamma=0.20,
-    )
+        params = dict(n_queries=100, n_docs=10000, avg_sparsity=30, alpha_p=0.83, gamma=0.20)
+        experiment = SparseSearchStabilityExperiment(p=2, use_sampling=True)
+        all_results = experiment.run_overlap_sensitivity_experiment(
+            dimensions=dimensions, overlap_probs=overlap_probs, **params
+        )
+        all_results = {str(pi): res for pi, res in all_results.items()}
+        save_results({"all_results": all_results, "params": params, "p": 2}, args.results)
+        print(f"\nResults saved to: {args.results}")
+
+    figure_dir = Path(args.figure_dir)
+    for pi, results in all_results.items():
+        plot_single_pi_result(results, figure_dir / f"sparse_stability_pi_{float(pi):.1f}")
+    plot_pi_comparison(all_results, figure_dir / "sparse_pi_comparison")
 
     print("\n" + "=" * 70)
     print("EXPERIMENT COMPLETE")
     print("=" * 70)
-    print(f"Generated {len(overlap_probs)} individual plots in overlap_sensitivity/")
-    print(f"Generated 1 comparison plot: overlap_sensitivity/pi_comparison_summary.png")

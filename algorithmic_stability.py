@@ -1,13 +1,31 @@
+import argparse
+import sys
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.ticker import ScalarFormatter
-import seaborn as sns
 import hnswlib
 import faiss
 import time
 from typing import Tuple, Dict, List
 from tqdm import tqdm
+
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
+from plotting import (  # noqa: E402
+    PALETTE,
+    FigureStyle,
+    apply_publication_style,
+    create_subplots,
+    finalize_figure,
+    format_log_axis,
+    load_results,
+    make_trend,
+    save_results,
+)
+
+RESULTS_PATH = ROOT / "results" / "hnsw_ivf_recall.json"
+FIGURE_PATH = ROOT / "figures" / "hnsw_ivf_recall"
 
 
 class SearchAlgorithm:
@@ -144,102 +162,80 @@ def summarize_results(results_df: pd.DataFrame):
     print(summary_df.to_string(index=False))
     print("="*len(header))
 
-def plot_results(results_df: pd.DataFrame):
-    """Generates styled plots from the results DataFrame."""
+def plot_results(results_df: pd.DataFrame, output_path: str):
+    """One panel per index (HNSW, IVF): recall@10 on stable vs. unstable data.
+
+    Blue = stable dataset, red = unstable dataset; the x-axis is log2 since the
+    dimensions are powers of two.
+    """
     print("Generating plots...")
+    apply_publication_style(FigureStyle(font_size=18, axes_linewidth=2))
+    fig, axes = create_subplots(1, 2, figsize=(13, 4.8))
 
-    # Extract Data from DataFrame
-    dimensions = sorted(results_df['Dimension'].unique())
-    
-    hnsw_data = results_df[results_df['Algorithm'] == 'HNSW'].sort_values('Dimension')
-    ivf_data = results_df[results_df['Algorithm'] == 'IVF'].sort_values('Dimension')
+    labels = ["Stable dataset", "Unstable dataset"]
+    colors = [PALETTE["blue_main"], PALETTE["red_strong"]]
+    markers = ["o", "s"]
 
-    hnsw_stable = hnsw_data['Stable Recall'].tolist()
-    hnsw_unstable = hnsw_data['Unstable Recall'].tolist()
-    
-    ivf_stable = ivf_data['Stable Recall'].tolist()
-    ivf_unstable = ivf_data['Unstable Recall'].tolist()
+    for ax, algo in zip(axes, ["HNSW", "IVF"]):
+        data = results_df[results_df["Algorithm"] == algo].sort_values("Dimension")
+        dims = data["Dimension"].tolist()
+        make_trend(
+            ax,
+            dims,
+            [data["Stable Recall"].tolist(), data["Unstable Recall"].tolist()],
+            labels,
+            colors=colors,
+            markers=markers,
+            xlabel="Dimension",
+            ylabel="Recall@10",
+            xscale="log",
+        )
+        format_log_axis(ax, "x", ticks=dims)
+        ax.set_ylim(0.0, 1.05)
+        ax.set_yticks([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+        ax.set_title(algo, pad=10)
+        ax.legend(loc="lower left")
 
-    # Style Configuration
-    plt.style.use("default")
-    plt.rcParams.update({
-        "font.size": 11,
-        "font.family": "serif",
-        "font.serif": ["Times New Roman", "DejaVu Serif", "serif"],
-        "axes.linewidth": 1.2,
-        "axes.spines.top": True,
-        "axes.spines.right": True,
-        "axes.spines.left": True,
-        "axes.spines.bottom": True,
-        "axes.grid": False,
-        "grid.alpha": 0.4,
-        "grid.linewidth": 0.8,
-        "grid.color": "gray",
-        "axes.axisbelow": True,
-        "legend.frameon": False,
-        "legend.fontsize": 10,
-        "xtick.major.size": 5,
-        "ytick.major.size": 5,
-        "lines.linewidth": 2,
-        "lines.markersize": 6,
-        "figure.dpi": 600,
-        "savefig.dpi": 600,
-        "savefig.bbox": "tight",
-        "savefig.pad_inches": 0.1,
-    })
+    saved = finalize_figure(fig, output_path, formats=["png", "pdf"], dpi=300)
+    print("Plot saved to: " + ", ".join(str(p) for p in saved))
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-    palette = ["#2E86AB", "#F18F01"]
 
-    # --- Plot 1: HNSW ---
-    ax1.plot(dimensions, hnsw_stable, marker="o", label="Stable Recall", color=palette[0], markerfacecolor="white")
-    ax1.plot(dimensions, hnsw_unstable, marker="s", label="Unstable Recall", color=palette[1], markerfacecolor="white")
-    
-    ax1.set_xlabel("Dimension", fontsize=12, fontweight="bold")
-    ax1.set_ylabel("Recall", fontsize=12, fontweight="bold")
-    ax1.set_title("HNSW Recall", fontsize=13, fontweight="bold", pad=15)
-    ax1.legend()
-    ax1.set_xscale("log", base=2)
-    ax1.set_ylim(0.2, 1.05) 
-
-    # --- Plot 2: IVF ---
-    ax2.plot(dimensions, ivf_stable, marker="o", label="Stable Recall", color=palette[0], markerfacecolor="white")
-    ax2.plot(dimensions, ivf_unstable, marker="s", label="Unstable Recall", color=palette[1], markerfacecolor="white")
-    
-    ax2.set_xlabel("Dimension", fontsize=12, fontweight="bold")
-    ax2.set_ylabel("Recall", fontsize=12, fontweight="bold")
-    ax2.set_title("IVF Recall", fontsize=13, fontweight="bold", pad=15)
-    ax2.legend()
-    ax2.set_xscale("log", base=2)
-    ax2.set_ylim(0.2, 1.05)
-
-    # --- Grid Formatting ---
-    for ax in (ax1, ax2):
-        ax.set_xticks(dimensions)
-        ax.get_xaxis().set_major_formatter(ScalarFormatter())
-        ax.minorticks_on()
-        ax.grid(True, which="major", axis="both", alpha=0.4, linewidth=0.8)
-        ax.grid(True, which="minor", axis="both", alpha=0.2, linewidth=0.5, linestyle=":")
-
-    plt.tight_layout()
-    filename = "hnsw_ivf_recall_styled.png"
-    plt.savefig(filename, format="png")
-    print(f"Plot saved to {filename}")
-    # plt.show() # Uncomment if running in an environment with display support
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="HNSW vs. IVF recall on stable and unstable datasets.")
+    parser.add_argument("--n-docs", type=int, default=1_000_000, help="Database size (paper: 1,000,000)")
+    parser.add_argument("--n-queries", type=int, default=1000, help="Number of queries (paper: 1000)")
+    parser.add_argument("--k", type=int, default=10, help="Recall@k")
+    parser.add_argument(
+        "--dimensions", type=int, nargs="+", default=[4, 8, 16, 32, 64, 128, 256, 512, 1024], help="Dimensions to sweep"
+    )
+    parser.add_argument("--results", default=str(RESULTS_PATH), help="JSON file to write/read experiment results")
+    parser.add_argument("--figure", default=str(FIGURE_PATH), help="Output figure stem (PNG + PDF are written)")
+    parser.add_argument("--plot-only", action="store_true", help="Skip the experiment and re-plot saved results")
+    return parser.parse_args()
 
 
 def main():
-    # Reduced parameters for quick testing; increase for full reproduction
-    # n_docs=1000000, n_queries=1000 recommended for full scale
-    results_df = run_full_experiment(
-        dimensions=[4, 8, 16, 32, 64, 128, 256, 512, 1024],
-        algorithms=['hnsw', 'ivf'],
-        n_docs=1000000,   
-        n_queries=1000,
-        k=10
-    )
-    summarize_results(results_df)
-    plot_results(results_df)
+    args = parse_args()
+    if args.plot_only:
+        results_df = pd.DataFrame(load_results(args.results)["records"])
+    else:
+        results_df = run_full_experiment(
+            dimensions=args.dimensions,
+            algorithms=["hnsw", "ivf"],
+            n_docs=args.n_docs,
+            n_queries=args.n_queries,
+            k=args.k,
+        )
+        save_results(
+            {
+                "records": results_df,
+                "params": {"n_docs": args.n_docs, "n_queries": args.n_queries, "k": args.k},
+            },
+            args.results,
+        )
+        print(f"Results saved to: {args.results}")
+        summarize_results(results_df)
+    plot_results(results_df, args.figure)
 
 
 if __name__ == "__main__":

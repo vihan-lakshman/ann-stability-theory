@@ -1,7 +1,28 @@
-import numpy as np
-import matplotlib.pyplot as plt
+import argparse
+import sys
+from pathlib import Path
 from typing import Dict, List, Tuple
+
+import numpy as np
 from tqdm import tqdm
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from plotting import (  # noqa: E402
+    PALETTE,
+    FigureStyle,
+    add_reference_line,
+    apply_publication_style,
+    create_subplots,
+    finalize_figure,
+    format_log_axis,
+    load_results,
+    make_trend,
+    save_results,
+)
+
+RESULTS_PATH = ROOT / "results" / "filtered_stability.json"
+FIGURE_PATH = ROOT / "figures" / "filtered_stability"
 
 
 def generate_unstable_vectors(rng: np.random.Generator, n: int, dim: int) -> np.ndarray:
@@ -326,108 +347,84 @@ def plot_results(
     metrics: Dict,
     dimensions: List[int],
     threshold: float,
-    output_path: str
+    output_path: str,
 ):
-    """Generate publication-quality plots."""
-    
-    plt.rcParams.update({
-        "font.size": 11,
-        "font.family": "serif",
-        "axes.linewidth": 1.2,
-        "lines.linewidth": 2,
-        "lines.markersize": 7,
-        "figure.dpi": 150,
-    })
-    
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
-    
-    colors = {
-        "No Penalty": "#D62828",
-        "Small Penalty": "#F77F00",
-        "Large Penalty": "#2E86AB"
-    }
-    markers = {
-        "No Penalty": "o",
-        "Small Penalty": "s",
-        "Large Penalty": "^"
-    }
-    
-    # Plot 1: Stability Ratio
-    for name in ["No Penalty", "Small Penalty", "Large Penalty"]:
-        ax1.plot(
-            dimensions,
-            metrics[name]["ratio"],
-            marker=markers[name],
-            label=name,
-            color=colors[name],
-            markerfacecolor="white",
-            markeredgewidth=1.5
-        )
-    
-    ax1.axhline(
-        y=1.0,
-        color="#666666",
-        linestyle="--",
-        alpha=0.8,
-        linewidth=1.5,
-        label="Instability Threshold"
+    """Two-panel figure: stability ratio and relative variance vs. dimension.
+
+    House style (figures4papers): sans-serif type, no grid, top/right spines
+    off, frameless legend. Blue marks the setting the theorem predicts to be
+    stable (large penalty); reds mark the unstable contrasts.
+    """
+    apply_publication_style(FigureStyle(font_size=18, axes_linewidth=2))
+    fig, (ax1, ax2) = create_subplots(1, 2, figsize=(13, 4.8))
+
+    order = ["Large Penalty", "Small Penalty", "No Penalty"]
+    labels = ["Large penalty", "Small penalty", "No penalty"]
+    colors = [PALETTE["blue_main"], PALETTE["red_soft"], PALETTE["red_strong"]]
+    markers = ["o", "s", "^"]
+
+    # Panel 1: stability ratio (log-log), with the instability threshold at 1.
+    make_trend(
+        ax1,
+        dimensions,
+        [metrics[name]["ratio"] for name in order],
+        labels,
+        colors=colors,
+        markers=markers,
+        xlabel="Dimension",
+        ylabel=r"Stability ratio ($d_{\max}/d_{\min}$)",
+        xscale="log",
+        yscale="log",
     )
-    
-    ax1.set_xlabel("Dimension", fontsize=12, fontweight="bold")
-    ax1.set_ylabel("Stability Ratio ($d_{max}/d_{min}$)", fontsize=12, fontweight="bold")
-    ax1.set_title("Query Stability", fontsize=13, fontweight="bold", pad=10)
-    ax1.legend(loc="best", framealpha=0.9)
-    ax1.set_xscale("log")
-    ax1.set_yscale("log")
-    ax1.grid(True, which="major", alpha=0.3)
-    ax1.grid(True, which="minor", alpha=0.1, linestyle=":")
-    ax1.minorticks_on()
-    
-    # Plot 2: Relative Variance
-    for name in ["No Penalty", "Small Penalty", "Large Penalty"]:
-        relvar_plot = [max(v, 1e-6) for v in metrics[name]["relvar"]]
-        ax2.plot(
-            dimensions,
-            relvar_plot,
-            marker=markers[name],
-            label=name,
-            color=colors[name],
-            markerfacecolor="white",
-            markeredgewidth=1.5
-        )
-    
-    ax2.set_xlabel("Dimension", fontsize=12, fontweight="bold")
-    ax2.set_ylabel("Relative Variance", fontsize=12, fontweight="bold")
-    ax2.set_title("Relative Variance", fontsize=13, fontweight="bold", pad=10)
-    ax2.legend(loc="best", framealpha=0.9)
-    ax2.set_xscale("log")
-    ax2.set_yscale("log")
-    ax2.grid(True, which="major", alpha=0.3)
-    ax2.grid(True, which="minor", alpha=0.1, linestyle=":")
-    ax2.minorticks_on()
-    
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches="tight")
-    print(f"\nPlot saved to: {output_path}")
+    add_reference_line(ax1, 1.0, label="Instability threshold")
+    format_log_axis(ax1, "x")
+    format_log_axis(ax1, "y")
+    ax1.legend(loc="upper right")
+
+    # Panel 2: relative variance (log-log). Clamp exact zeros for the log axis.
+    make_trend(
+        ax2,
+        dimensions,
+        [[max(v, 1e-6) for v in metrics[name]["relvar"]] for name in order],
+        labels,
+        colors=colors,
+        markers=markers,
+        xlabel="Dimension",
+        ylabel="Relative variance",
+        xscale="log",
+        yscale="log",
+    )
+    format_log_axis(ax2, "x")
+    format_log_axis(ax2, "y")
+    ax2.legend(loc="lower left")
+
+    saved = finalize_figure(fig, output_path, formats=["png", "pdf"], dpi=300)
+    print("\nPlot saved to: " + ", ".join(str(s) for s in saved))
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Filtered search stability experiment (Theorem 6.3).")
+    parser.add_argument("--results", default=str(RESULTS_PATH), help="JSON file to write/read experiment results")
+    parser.add_argument("--figure", default=str(FIGURE_PATH), help="Output figure stem (PNG + PDF are written)")
+    parser.add_argument("--plot-only", action="store_true", help="Skip the experiment and re-plot saved results")
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
+    args = parse_args()
     dimensions = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000]
-    
-    metrics, dims, threshold = run_experiment(
-        dimensions=dimensions,
-        n_docs=10000,
-        n_queries=100,
-        p_mismatch=0.5,
-        n_trials=1,
-        seed=42
-    )
-    
-    print_analysis(metrics, threshold)
-    
-    plot_results(
-        metrics=metrics,
-        dimensions=dims,
-        threshold=threshold,
-        output_path="filtered_stability.png"
-    )
+
+    if args.plot_only:
+        saved = load_results(args.results)
+        metrics, dims, threshold = saved["metrics"], saved["dimensions"], saved["threshold"]
+    else:
+        params = dict(n_docs=10000, n_queries=100, p_mismatch=0.5, n_trials=1, seed=42)
+        metrics, dims, threshold = run_experiment(dimensions=dimensions, **params)
+        save_results(
+            {"metrics": metrics, "dimensions": dims, "threshold": threshold, "params": params},
+            args.results,
+        )
+        print(f"Results saved to: {args.results}")
+        print_analysis(metrics, threshold)
+
+    plot_results(metrics=metrics, dimensions=dims, threshold=threshold, output_path=args.figure)
