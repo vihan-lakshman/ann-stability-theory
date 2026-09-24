@@ -3,3 +3,5 @@ __pycache__/
 .DS_Store
 overlap_sensitivity/
 **/__pycache__
+# Vector figures are regenerated from results/*.json (make plots); only the PNGs are tracked.
+figures/*.pdf

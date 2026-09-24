@@ -1,0 +1,202 @@
+{
+  "results": {
+    "dimensions": [
+      8,
+      16,
+      32,
+      64,
+      128,
+      256,
+      512,
+      1024,
+      2048,
+      4096,
+      8192
+    ],
+    "chamfer_stability": [
+      34.44051567660612,
+      22.00409730980517,
+      17.22447895039034,
+      14.201869014765624,
+      13.399907111873706,
+      12.339705643541503,
+      11.944186793257442,
+      11.478748709195422,
+      11.313636119510328,
+      11.142977307460193,
+      11.060883966080917
+    ],
+    "chamfer_relvar": [
+      0.37820124455258863,
+      0.2920463082947945,
+      0.2508525307137208,
+      0.2728316508830641,
+      0.28834518405831466,
+      0.24295615882566343,
+      0.2138737764948371,
+      0.2228351481346751,
+      0.2564992877345608,
+      0.2574250079654892,
+      0.27349134643298
+    ],
+    "avgpool_stability": [
+      1.0000000000000002,
+      1.0000000000000002,
+      1.0,
+      1.0000000000000002,
+      1.0000000000000002,
+      1.0000000000000002,
+      1.0,
+      1.0,
+      1.0000000000000002,
+      1.0,
+      1.0
+    ],
+    "avgpool_relvar": [
+      1.8341016046388523e-33,
+      1.116114921371291e-33,
+      9.99634678334751e-34,
+      1.1660350255298081e-33,
+      9.799131557042256e-34,
+      1.0094954396500136e-33,
+      9.016433627643284e-34,
+      7.223007663429889e-34,
+      1.2455374136341132e-33,
+      8.81921840133803e-34,
+      6.692991742734522e-34
+    ]
+  },
+  "theorem_results": [
+    {
+      "c_stability": 24.11910792151172,
+      "condition1_passed": true,
+      "non_degeneracy_rate": 1.0,
+      "condition2_passed": true,
+      "covariance_sum": 9.545921118262585e-05,
+      "condition3_passed": true,
+      "all_conditions_passed": true,
+      "dimension": 8
+    },
+    {
+      "c_stability": 23.172580884987628,
+      "condition1_passed": true,
+      "non_degeneracy_rate": 1.0,
+      "condition2_passed": true,
+      "covariance_sum": 3.72345655824426e-05,
+      "condition3_passed": true,
+      "all_conditions_passed": true,
+      "dimension": 16
+    },
+    {
+      "c_stability": 23.873840199818023,
+      "condition1_passed": true,
+      "non_degeneracy_rate": 1.0,
+      "condition2_passed": true,
+      "covariance_sum": 6.066133143303204e-05,
+      "condition3_passed": true,
+      "all_conditions_passed": true,
+      "dimension": 32
+    },
+    {
+      "c_stability": 19.005846234246462,
+      "condition1_passed": true,
+      "non_degeneracy_rate": 1.0,
+      "condition2_passed": true,
+      "covariance_sum": 7.025444353743463e-05,
+      "condition3_passed": true,
+      "all_conditions_passed": true,
+      "dimension": 64
+    },
+    {
+      "c_stability": 20.956285928701533,
+      "condition1_passed": true,
+      "non_degeneracy_rate": 1.0,
+      "condition2_passed": true,
+      "covariance_sum": 8.619159036331684e-07,
+      "condition3_passed": true,
+      "all_conditions_passed": true,
+      "dimension": 128
+    },
+    {
+      "c_stability": 19.302511743190134,
+      "condition1_passed": true,
+      "non_degeneracy_rate": 1.0,
+      "condition2_passed": true,
+      "covariance_sum": 1.977837744405686e-05,
+      "condition3_passed": true,
+      "all_conditions_passed": true,
+      "dimension": 256
+    },
+    {
+      "c_stability": 21.178185535287092,
+      "condition1_passed": true,
+      "non_degeneracy_rate": 1.0,
+      "condition2_passed": true,
+      "covariance_sum": 3.5303256613143374e-06,
+      "condition3_passed": true,
+      "all_conditions_passed": true,
+      "dimension": 512
+    },
+    {
+      "c_stability": 20.764457951910696,
+      "condition1_passed": true,
+      "non_degeneracy_rate": 1.0,
+      "condition2_passed": true,
+      "covariance_sum": 3.2148296778326504e-06,
+      "condition3_passed": true,
+      "all_conditions_passed": true,
+      "dimension": 1024
+    },
+    {
+      "c_stability": 20.803064073877373,
+      "condition1_passed": true,
+      "non_degeneracy_rate": 1.0,
+      "condition2_passed": true,
+      "covariance_sum": 1.7792505561774774e-06,
+      "condition3_passed": true,
+      "all_conditions_passed": true,
+      "dimension": 2048
+    },
+    {
+      "c_stability": 20.44859627596744,
+      "condition1_passed": true,
+      "non_degeneracy_rate": 1.0,
+      "condition2_passed": true,
+      "covariance_sum": 1.2851091627436451e-06,
+      "condition3_passed": true,
+      "all_conditions_passed": true,
+      "dimension": 4096
+    },
+    {
+      "c_stability": 20.492814467054927,
+      "condition1_passed": true,
+      "non_degeneracy_rate": 1.0,
+      "condition2_passed": true,
+      "covariance_sum": 1.5035739324228507e-06,
+      "condition3_passed": true,
+      "all_conditions_passed": true,
+      "dimension": 8192
+    }
+  ],
+  "dimensions": [
+    8,
+    16,
+    32,
+    64,
+    128,
+    256,
+    512,
+    1024,
+    2048,
+    4096,
+    8192
+  ],
+  "params": {
+    "n_base_docs": 200,
+    "n_base_queries": 200,
+    "num_query_sets": 100,
+    "vectors_per_set": 4,
+    "n_clusters": 5,
+    "check_theorem": true
+  }
+}

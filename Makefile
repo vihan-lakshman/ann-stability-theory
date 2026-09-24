@@ -1,8 +1,11 @@
-.PHONY: help install sync clean clean-plots plots algorithmic-stability filtered-stability \
-        colbert-stability synthetic-stability theorem-validation sparse-synthetics \
-        compute-splade validate-sparse-theorem all-experiments
+.PHONY: help install install-all sync clean clean-plots plots algorithmic-stability \
+        filtered-stability colbert-stability synthetic-stability distribution-stability \
+        all-distributions theorem-validation sparse-synthetics compute-splade \
+        validate-sparse-theorem validate-all-datasets all-experiments
 
 .DEFAULT_GOAL := help
+
+DISTRIBUTIONS := iid antipodal lowrank-modes
 
 BLUE := \033[34m
 GREEN := \033[32m
@@ -15,8 +18,11 @@ help:
 	@echo "Available targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-25s$(RESET) %s\n", $$1, $$2}'
 
-install: ## Install dependencies
+install: ## Install core dependencies (everything needed for the synthetic experiments and all figures)
 	uv sync
+
+install-all: ## Install core + optional extras (ANN backends and encoders; needs macOS >= 14 or Linux for faiss-cpu)
+	uv sync --extra ann --extra models
 
 sync: ## Sync dependencies
 	uv sync
@@ -36,14 +42,20 @@ plots: ## Re-render every figure from the saved results/*.json without re-runnin
 	               multi-vector/synthetic_stability.py multi-vector/colbert_stability.py \
 	               sparse/synthetics.py; do \
 		echo "$(YELLOW)$$script --plot-only$(RESET)"; \
-		uv run python $$script --plot-only || echo "  (skipped: no saved results yet)"; \
+		uv run python $$script --plot-only \
+			|| echo "  (skipped: no results/*.json yet, or the script needs an optional extra)"; \
+	done
+	@for dist in $(DISTRIBUTIONS); do \
+		echo "$(YELLOW)multi-vector/distribution_stability.py --distribution $$dist --plot-only$(RESET)"; \
+		uv run python multi-vector/distribution_stability.py --distribution $$dist --plot-only \
+			|| echo "  (skipped: no results/*.json yet)"; \
 	done
 
 # Real work begins here
 # Target for running algorithmic stability experiments comparing
 algorithmic-stability: ## Run main algorithmic stability experiments (HNSW vs IVF)
 	@echo "$(BLUE)Running algorithmic stability experiments...$(RESET)"
-	uv run python algorithmic_stability.py
+	uv run --extra ann python algorithmic_stability.py
 
 filtered-stability: ## Run filtered search stability experiments
 	@echo "$(BLUE)Running filtered stability experiments...$(RESET)"
@@ -51,11 +63,22 @@ filtered-stability: ## Run filtered search stability experiments
 
 colbert-stability: ## Run ColBERT real-world stability analysis
 	@echo "$(BLUE)Running ColBERT stability analysis...$(RESET)"
-	uv run python multi-vector/colbert_stability.py
+	uv run --extra models python multi-vector/colbert_stability.py
 
 synthetic-stability: ## Run multi-vector synthetic stability experiments
 	@echo "$(BLUE)Running synthetic multi-vector stability experiments...$(RESET)"
 	uv run python multi-vector/synthetic_stability.py
+
+distribution-stability: ## Run multi-vector stability across data distributions (usage: make distribution-stability DISTRIBUTION=lowrank-modes)
+	@echo "$(BLUE)Running multi-vector distribution sweep ($(or $(DISTRIBUTION),lowrank-modes))...$(RESET)"
+	uv run python multi-vector/distribution_stability.py --distribution $(or $(DISTRIBUTION),lowrank-modes)
+
+all-distributions: ## Run the distribution sweep for every distribution (iid, antipodal, lowrank-modes)
+	@for dist in $(DISTRIBUTIONS); do \
+		echo "$(YELLOW)Sweeping $$dist...$(RESET)"; \
+		uv run python multi-vector/distribution_stability.py --distribution $$dist; \
+	done
+	@echo "$(GREEN)All distribution sweeps completed!$(RESET)"
 
 sparse-synthetics: ## Run CoI and overlap of importance analysis on synthetic embeddings
 	@echo "$(BLUE)Running sparse synthetics experiments...$(RESET)"
@@ -70,11 +93,11 @@ ifndef DATASET
 	@exit 1
 endif
 	@echo "$(BLUE)Validating Theorem 5.9 on $(DATASET)...$(RESET)"
-	uv run python multi-vector/theorem_validation.py $(DATASET)
+	uv run --extra models python multi-vector/theorem_validation.py $(DATASET)
 
 compute-splade: ## Compute SPLADE embeddings (usage: make compute-splade OUTPUT=./embeddings MAX_DOCS=500000 MAX_QUERIES=10000)
 	@echo "$(BLUE)Computing SPLADE embeddings...$(RESET)"
-	uv run python sparse/compute_splade_embeddings.py \
+	uv run --extra models python sparse/compute_splade_embeddings.py \
 		--output-dir $(or $(OUTPUT),./splade_embeddings) \
 		--max-docs $(or $(MAX_DOCS),500000) \
 		--max-queries $(or $(MAX_QUERIES),10000) \
@@ -111,6 +134,13 @@ validate-all-datasets: ## Validate Theorem 5.9 on all available datasets
 	@echo "$(BLUE)Validating on all datasets...$(RESET)"
 	@for dataset in msmarco natural_questions hotpotqa trec_covid nfcorpus; do \
 		echo "$(YELLOW)Validating on $$dataset...$(RESET)"; \
-		uv run python multi-vector/theorem_validation.py $$dataset; \
+		uv run --extra models python multi-vector/theorem_validation.py $$dataset; \
 	done
 	@echo "$(GREEN)All dataset validations completed!$(RESET)"
+
+all-experiments: ## Run every experiment that needs no downloaded data (synthetic + filtered + sparse)
+	@$(MAKE) --no-print-directory synthetic-stability
+	@$(MAKE) --no-print-directory all-distributions
+	@$(MAKE) --no-print-directory filtered-stability
+	@$(MAKE) --no-print-directory sparse-synthetics
+	@echo "$(GREEN)All synthetic experiments completed. Figures are in figures/, raw numbers in results/.$(RESET)"
