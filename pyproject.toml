@@ -2,19 +2,34 @@
 name = "ann-stability"
 version = "0.1.0"
 description = "Stability Study of Sparse, Multi-vector and Filtered ANN Search"
-requires-python = ">=3.12"
+# Upper bound: torch / faiss-cpu have no wheels beyond 3.13, and the figures in
+# figures/ were rendered on 3.12. See .python-version.
+requires-python = ">=3.12,<3.14"
+
+# Core dependencies: enough to run every synthetic experiment and to re-render
+# every figure from results/*.json. Deliberately light so that `uv sync` works
+# on any platform.
 dependencies = [
-    "beir>=2.2.0",
-    "datasets>=4.4.1",
-    "faiss-cpu>=1.13.1",
-    "hnswlib>=0.8.0",
-    "matplotlib>=3.10.8",
+    "matplotlib>=3.10.8,<3.11",
     "numpy>=2.3.5",
     "pandas>=2.3.3",
     "scipy>=1.16.3",
-    "seaborn>=0.13.2",
+    "tqdm>=4.67.1",
+]
+
+[project.optional-dependencies]
+# ANN index backends, used only by algorithmic_stability.py (HNSW vs IVF).
+# faiss-cpu ships no wheel for macOS < 14.
+ann = [
+    "faiss-cpu>=1.13.1",
+    "hnswlib>=0.8.0",
+]
+# Encoders + dataset loaders, used only by the real-data experiments
+# (ColBERT, theorem validation, SPLADE embedding).
+models = [
+    "beir>=2.2.0",
+    "datasets>=4.4.1",
     "sentence-transformers>=5.2.0",
     "torch>=2.9.1",
-    "tqdm>=4.67.1",
     "transformers>=4.57.3",
 ]

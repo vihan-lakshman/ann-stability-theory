@@ -1,13 +1,11 @@
+from __future__ import annotations
+
 import argparse
 import sys
 from pathlib import Path
 from typing import List, Tuple
 
 import numpy as np
-import torch
-from datasets import load_dataset
-from tqdm import tqdm
-from transformers import AutoModel, AutoTokenizer
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -34,6 +32,14 @@ class RealDataStabilityAnalyzer:
     """
 
     def __init__(self, model_name: str = "colbert-ir/colbertv2.0"):
+        # Imported here, not at module scope, so that --plot-only can re-render
+        # the figure from results/ with only the core dependencies installed.
+        global torch, load_dataset, tqdm, AutoModel, AutoTokenizer
+        import torch
+        from datasets import load_dataset
+        from tqdm import tqdm
+        from transformers import AutoModel, AutoTokenizer
+
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"Using device: {self.device}")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)

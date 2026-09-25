@@ -8,3 +8,5 @@ splade_embeddings/
 results/
 logs/
 *.log
+# Vector figures are regenerated from results/*.json (make plots); only the PNGs are tracked.
+figures/*.pdf
