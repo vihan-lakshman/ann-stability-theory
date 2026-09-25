@@ -12,6 +12,7 @@ from plotting import (  # noqa: E402
     PALETTE,
     FigureStyle,
     add_reference_line,
+    add_shared_legend,
     apply_publication_style,
     create_subplots,
     finalize_figure,
@@ -534,7 +535,6 @@ def plot_single_pi_result(results: Dict, output_stem: Path):
     )
     add_reference_line(ax1, 1.0, label="Instability threshold")
     format_log_axis(ax1, "x")
-    ax1.legend(loc="upper right")
 
     make_trend(
         ax2,
@@ -550,40 +550,84 @@ def plot_single_pi_result(results: Dict, output_stem: Path):
     )
     format_log_axis(ax2, "x")
     format_log_axis(ax2, "y")
-    ax2.legend(loc="lower left")
+
+    add_shared_legend(fig, ax1)
+    saved = finalize_figure(fig, output_stem, formats=["png", "pdf"], dpi=300, bbox_inches="tight")
+    print("  Saved: " + ", ".join(str(p) for p in saved))
+
+
+def _plot_metric_comparison(
+    all_results: Dict,
+    metric: str,
+    ylabel: str,
+    output_stem: Path,
+    yscale: str | None = None,
+    reference: float | None = None,
+):
+    """Single panel: one metric vs. dimension, one curve per regime.
+
+    Colours follow the house palette (blue = the regime the theorem predicts
+    to be stable, reds = one property only, gray = neither). When the results
+    contain several overlap probabilities, each pi gets its own line style.
+    """
+    apply_publication_style(FigureStyle(font_size=18, axes_linewidth=2))
+    fig, (ax,) = create_subplots(1, 1, figsize=(8, 6))
+    pi_values = sorted(all_results.keys(), key=float)
+    pi_linestyles = ["-", "--", ":", "-."]
+    dims = all_results[pi_values[0]]["dimensions"]
+
+    series, labels, colors, markers, linestyles = [], [], [], [], []
+    for j, pi in enumerate(pi_values):
+        for sc in SCENARIOS:
+            series.append(all_results[pi]["scenarios"][sc["name"]][metric])
+            label = sc["label"]
+            if len(pi_values) > 1:
+                label += rf" ($\pi = {float(pi):g}$)"
+            labels.append(label)
+            colors.append(sc["color"])
+            markers.append(sc["marker"])
+            linestyles.append(pi_linestyles[j % len(pi_linestyles)])
+
+    lines = make_trend(
+        ax,
+        dims,
+        series,
+        labels,
+        colors=colors,
+        markers=markers,
+        linestyles=linestyles,
+        xlabel="Dimension",
+        ylabel=ylabel,
+        xscale="log",
+        yscale=yscale,
+    )
+    # "Overlap only" and "Neither" nearly coincide; stack the curves so the
+    # gray "Neither" line sits underneath and the later regimes stay visible.
+    for i, line in enumerate(lines):
+        line.set_zorder(3 + len(lines) - i)
+    if reference is not None:
+        add_reference_line(ax, reference, label="Instability threshold")
+    format_log_axis(ax, "x")
+    if yscale == "log":
+        format_log_axis(ax, "y")
+    if len(pi_values) == 1:
+        ax.set_title(rf"{ylabel} ($\pi = {float(pi_values[0]):g}$)", pad=10)
+    else:
+        ax.set_title(ylabel, pad=10)
+    ax.legend(loc="best", ncol=1 if len(pi_values) == 1 else 2)
 
     saved = finalize_figure(fig, output_stem, formats=["png", "pdf"], dpi=300)
     print("  Saved: " + ", ".join(str(p) for p in saved))
 
 
 def plot_pi_comparison(all_results: Dict, output_stem: Path):
-    """2x2 summary: relative variance vs. dimension per regime, one curve per pi."""
-    apply_publication_style(FigureStyle(font_size=18, axes_linewidth=2))
-    fig, axes = create_subplots(2, 2, figsize=(13, 9.5))
-    pi_values = sorted(all_results.keys(), key=float)
-    pi_colors = [PALETTE["blue_main"], PALETTE["blue_secondary"], PALETTE["teal"], PALETTE["violet"], PALETTE["gray_mid"]]
+    """Relative variance vs. dimension, one curve per regime (log-log)."""
+    _plot_metric_comparison(all_results, "relvars", "Relative variance", output_stem, yscale="log")
 
-    for ax, sc in zip(axes, SCENARIOS):
-        name = sc["name"]
-        dims = all_results[pi_values[0]]["dimensions"]
-        make_trend(
-            ax,
-            dims,
-            [all_results[pi]["scenarios"][name]["relvars"] for pi in pi_values],
-            [rf"$\pi = {float(pi):g}$" for pi in pi_values],
-            colors=pi_colors,
-            xlabel="Dimension",
-            ylabel="Relative variance",
-            xscale="log",
-            yscale="log",
-        )
-        format_log_axis(ax, "x")
-        format_log_axis(ax, "y")
-        ax.set_title(sc["label"], pad=10)
-        ax.legend(loc="best")
 
-    saved = finalize_figure(fig, output_stem, formats=["png", "pdf"], dpi=300)
-    print("  Saved: " + ", ".join(str(p) for p in saved))
+def plot_ratio_comparison(all_results: Dict, output_stem: Path):
+    """Stability ratio d_max/d_min vs. dimension, one curve per regime."""
+    _plot_metric_comparison(all_results, "ratios", "Stability ratio", output_stem, reference=1.0)
 
 
 def parse_args() -> argparse.Namespace:
@@ -633,6 +677,7 @@ if __name__ == "__main__":
     for pi, results in all_results.items():
         plot_single_pi_result(results, figure_dir / f"sparse_stability_pi_{float(pi):.1f}")
     plot_pi_comparison(all_results, figure_dir / "sparse_pi_comparison")
+    plot_ratio_comparison(all_results, figure_dir / "sparse_ratio_comparison")
 
     print("\n" + "=" * 70)
     print("EXPERIMENT COMPLETE")

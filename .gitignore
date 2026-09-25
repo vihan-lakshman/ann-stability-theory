@@ -3,3 +3,8 @@ __pycache__/
 .DS_Store
 overlap_sensitivity/
 **/__pycache__
+# large data / run artifacts
+splade_embeddings/
+results/
+logs/
+*.log

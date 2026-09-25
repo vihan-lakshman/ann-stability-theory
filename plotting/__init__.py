@@ -11,6 +11,7 @@ from .pubstyle import (  # noqa: F401
     PALETTE,
     FigureStyle,
     add_reference_line,
+    add_shared_legend,
     apply_publication_style,
     create_subplots,
     finalize_figure,

@@ -316,6 +316,19 @@ def add_reference_line(
     return ax.axhline(y=y, color=color, alpha=alpha, linewidth=linewidth, linestyle=linestyle, label=label, zorder=1)
 
 
+def add_shared_legend(fig, ax, ncol: int | None = None, **legend_kwargs):
+    """One horizontal legend above all panels, built from ``ax``'s handles.
+
+    Use when every panel shows the same series and no corner of the axes is
+    free. Save with ``bbox_inches="tight"`` so the legend is not clipped.
+    """
+    handles, labels = ax.get_legend_handles_labels()
+    kwargs = dict(loc="lower center", bbox_to_anchor=(0.5, 0.98), ncol=ncol or len(handles),
+                  columnspacing=1.4, handletextpad=0.5)
+    kwargs.update(legend_kwargs)
+    return fig.legend(handles, labels, **kwargs)
+
+
 def format_log_axis(ax, axis: str = "x", base: float = 10, ticks: Sequence[float] | None = None) -> None:
     """Tidy a logarithmic axis.
 
@@ -385,7 +398,7 @@ def finalize_figure(
         fmt = fmt.lower().lstrip(".")
         if fmt not in _SUPPORTED:
             raise ValueError(f"unsupported format {fmt!r}; choose from {sorted(_SUPPORTED)}")
-        target = stem.with_suffix(f".{fmt}")
+        target = stem.parent / f"{stem.name}.{fmt}"  # with_suffix would eat a dotted stem such as "pi_0.5"
         fig.savefig(target, dpi=dpi, format=fmt, **savefig_kwargs)
         saved.append(target)
     if close:

@@ -12,6 +12,7 @@ from plotting import (  # noqa: E402
     PALETTE,
     FigureStyle,
     add_reference_line,
+    add_shared_legend,
     apply_publication_style,
     create_subplots,
     finalize_figure,
@@ -379,7 +380,6 @@ def plot_results(
     add_reference_line(ax1, 1.0, label="Instability threshold")
     format_log_axis(ax1, "x")
     format_log_axis(ax1, "y")
-    ax1.legend(loc="upper right")
 
     # Panel 2: relative variance (log-log). Clamp exact zeros for the log axis.
     make_trend(
@@ -396,9 +396,9 @@ def plot_results(
     )
     format_log_axis(ax2, "x")
     format_log_axis(ax2, "y")
-    ax2.legend(loc="lower left")
 
-    saved = finalize_figure(fig, output_path, formats=["png", "pdf"], dpi=300)
+    add_shared_legend(fig, ax1)
+    saved = finalize_figure(fig, output_path, formats=["png", "pdf"], dpi=300, bbox_inches="tight")
     print("\nPlot saved to: " + ", ".join(str(s) for s in saved))
 
 
