@@ -163,10 +163,10 @@ def summarize_results(results_df: pd.DataFrame):
     print("="*len(header))
 
 def plot_results(results_df: pd.DataFrame, output_path: str):
-    """One panel per index (HNSW, IVF): recall@10 on stable vs. unstable data.
+    """Two-panel figure: recall@10 vs. dimension for HNSW (left) and IVF (right).
 
-    Blue = stable dataset, red = unstable dataset; the x-axis is log2 since the
-    dimensions are powers of two.
+    Blue = stable (clustered) dataset; red = unstable (i.i.d. Gaussian) dataset.
+    Markers double as a print-safe encoding.
     """
     print("Generating plots...")
     apply_publication_style(FigureStyle(font_size=18, axes_linewidth=2))
@@ -178,26 +178,23 @@ def plot_results(results_df: pd.DataFrame, output_path: str):
 
     for ax, algo in zip(axes, ["HNSW", "IVF"]):
         data = results_df[results_df["Algorithm"] == algo].sort_values("Dimension")
-        dims = data["Dimension"].tolist()
         make_trend(
             ax,
-            dims,
+            data["Dimension"].tolist(),
             [data["Stable Recall"].tolist(), data["Unstable Recall"].tolist()],
             labels,
             colors=colors,
             markers=markers,
             xlabel="Dimension",
-            ylabel="Recall@10",
+            ylabel=f"{algo} recall@10",
             xscale="log",
         )
-        format_log_axis(ax, "x", ticks=dims)
+        format_log_axis(ax, "x")
         ax.set_ylim(0.0, 1.05)
-        ax.set_yticks([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
-        ax.set_title(algo, pad=10)
-        ax.legend(loc="lower left")
+        ax.legend(loc="best")
 
     saved = finalize_figure(fig, output_path, formats=["png", "pdf"], dpi=300)
-    print("Plot saved to: " + ", ".join(str(p) for p in saved))
+    print("\nPlot saved to: " + ", ".join(str(s) for s in saved))
 
 
 def parse_args() -> argparse.Namespace:
